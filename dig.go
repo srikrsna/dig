@@ -238,6 +238,12 @@ type Container struct {
 
 	// Parent is the container that spawned this.
 	parent *Container
+
+	// All decorators declared in the current container mapped to each return node's key
+	decorators map[key][]*node
+
+	// All the decorators for to be used by the native nodes irrespective of where they are declared
+	nativeDecorators map[key][]*node
 }
 
 // containerWriter provides write access to the Container's underlying data
@@ -275,6 +281,9 @@ type containerStore interface {
 	// Returns the providers that can produce values for the given group and
 	// type.
 	getGroupProviders(name string, t reflect.Type) []provider
+
+	// Returns the decorator list of a particular node
+	getNativeDecorators(k key) []*node
 
 	createGraph() *dot.Graph
 }
@@ -410,6 +419,14 @@ func (c *Container) getProviders(k key) []provider {
 	return providers
 }
 
+func (c *Container) getNativeDecorators(k key) []*node {
+	decorators := make([]*node, 0)
+	for i := len(c.nativeDecorators[k]) - 1; i >= 0; i-- {
+		decorators = append(decorators, c.nativeDecorators[k][i])
+	}
+	return decorators
+}
+
 func (c *Container) getRoot() *Container {
 	if c.parent == nil {
 		return c
@@ -516,6 +533,33 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 	return nil
 }
 
+func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error{
+	dtype := reflect.TypeOf(decorator)
+	if dtype == nil {
+		return errors.New("can't decorate with an untyped nil")
+	}
+	if dtype.Kind() != reflect.Func {
+		return fmt.Errorf("can't call non-function %v (type %v)", decorator, dtype)
+	}
+
+	var options provideOptions
+	for _, o := range opts {
+		o.applyProvideOption(&options)
+	}
+	if err := options.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.decorate(decorator, options); err != nil {
+		return errConstructorFailed{
+			Func:   digreflect.InspectFunc(decorator),
+			Reason: err,
+		}
+	}
+
+	return nil
+}
+
 // Child returns a named child of this container. The child container has
 // full access to the parent's types, and any types provided to the child
 // will be made available to the parent.
@@ -612,6 +656,119 @@ func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 		keys[k] = struct{}{}
 	}
 	return keys, nil
+}
+
+func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
+	dtype := reflect.TypeOf(dtor)
+
+	// Verifying if output is present among the input params.
+	inTypes := make(map[string]int)
+	for i := 0; i < dtype.NumIn(); i++ {
+		in := dtype.In(i)
+		if reflect.TypeOf(in).Kind() == reflect.Struct {
+			inType := make(map[reflect.StructField]struct{})
+			for j := 0; j < in.NumField(); j++ {
+				// Exclude dig.In field.
+				if in.Field(j).Type != _inType {
+					inType[in.Field(j)] = struct{}{}
+				}
+			}
+			inTypes[fmt.Sprintf("%v", inType)] = 1
+		} else {
+			inTypes[fmt.Sprintf("%v", in)] = 1
+		}
+	}
+
+	foundNum := 0
+	for i := 0; i < dtype.NumOut(); i++ {
+		out := dtype.Out(i)
+		// Assuming error is at the end of the return types
+		if out == reflect.TypeOf(error(nil)) {
+			break
+		}
+		if reflect.TypeOf(out).Kind() == reflect.Struct {
+			outType := make(map[reflect.StructField]struct{})
+			for j := 0; j < out.NumField(); j++ {
+				// Exclude dig.Out field.
+				if out.Field(j).Type != _outType {
+					outType[out.Field(j)] = struct{}{}
+				}
+			}
+			if _, ok := inTypes[fmt.Sprintf("%v", outType)]; ok {
+				foundNum++
+			}
+		} else {
+			if _, ok := inTypes[fmt.Sprintf("%v", out)]; ok {
+				foundNum++
+			}
+		}
+	}
+	k := 0
+	if dtype.Out(dtype.NumOut() - 1) == reflect.TypeOf(error(nil)) {
+		k = 1
+	}
+	if foundNum < dtype.NumOut() - k {
+		return errors.New("the result types, with the exception of error, must be present among the input parameters")
+	}
+	pl, err := newParamList(dtype)
+	if err != nil {
+		return err
+	}
+
+	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
+		return errMissingDependencies{
+			Func:   digreflect.InspectFunc(dtor),
+			Reason: err,
+		}
+	}
+
+	n, err := newNode(
+		dtor,
+		nodeOptions{
+			ResultName:  opts.Name,
+			ResultGroup: opts.Group,
+			ResultAs:    opts.As,
+		},
+	)
+	if err != nil {
+		return nil
+	}
+
+	keys, err := c.findAndValidateResults(n)
+	if err != nil {
+		return err
+	}
+	// TODO : Check if error type affects decoration
+	for k := range keys {
+		found := false
+
+		// Checking for the decorator output's existence in the sub graph with the
+		// current container as root.
+		if _, ok := c.providers[k]; !ok {
+			var cont []*Container
+			cont = append(cont, c.children...)
+			for !found || len(cont) == 0 {
+				v := cont[0]
+				cont = cont[1:]
+				if _, ok := v.providers[k]; !ok {
+					cont = append(cont, v.children...)
+				} else {
+					found = true
+					v.nativeDecorators[k] = append(v.nativeDecorators[k], n)
+				}
+			}
+		} else {
+			found = true
+			c.nativeDecorators[k] = append(c.nativeDecorators[k], n)
+		}
+
+		if !found {
+			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
+		}
+
+		c.decorators[k] = append(c.decorators[k], n)
+	}
+	return nil
 }
 
 // Visits the results of a node and compiles a collection of all the keys
