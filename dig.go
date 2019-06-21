@@ -655,57 +655,50 @@ func (c *Container) findAndValidateResults(n *node, d bool) (map[key]struct{}, e
 
 func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	dtype := reflect.TypeOf(dtor)
-	cp := c.getRoot()
+
 	// Verifying if output is present among the input params.
 	inTypes := make(map[string]int)
 	for i := 0; i < dtype.NumIn(); i++ {
 		in := dtype.In(i)
-		if reflect.TypeOf(in).Kind() == reflect.Struct {
-			//inType := make(map[reflect.StructField]struct{})
-			inType := make([]reflect.StructField, 0)
+		if in.Kind() == reflect.Struct {
 			for j := 0; j < in.NumField(); j++ {
 				// Exclude dig.In field.
 				if in.Field(j).Type != _inType {
-					//inType[in.Field(j)] = struct{}{}
-					inType = append(inType, in.Field(i))
+					inTypes[fmt.Sprintf("%v", in.Field(j).Type)] = 1
 				}
 			}
-			inTypes[fmt.Sprintf("%v", reflect.StructOf(inType))] = 1
 		} else {
 			inTypes[fmt.Sprintf("%v", in)] = 1
 		}
 	}
 
 	foundNum := 0
+	expectedNum := 0
 	for i := 0; i < dtype.NumOut(); i++ {
 		out := dtype.Out(i)
 		// Assuming error is at the end of the return types
 		if out == reflect.TypeOf((*error)(nil)).Elem() {
 			break
 		}
-		if reflect.TypeOf(out).Kind() == reflect.Struct {
-			outType := make([]reflect.StructField, 0)
+		if out.Kind() == reflect.Struct {
 			for j := 0; j < out.NumField(); j++ {
 				// Exclude dig.Out field.
 				if out.Field(j).Type != _outType {
-					outType = append(outType, out.Field(i))
+					expectedNum++
+					if _, ok := inTypes[fmt.Sprintf("%v", out.Field(j).Type)]; ok {
+						foundNum++
+					}
 				}
 			}
-			if _, ok := inTypes[fmt.Sprintf("%v", reflect.StructOf(outType))]; ok {
-				foundNum++
-			}
 		} else {
+			expectedNum++
 			if _, ok := inTypes[fmt.Sprintf("%v", out)]; ok {
 				foundNum++
 			}
 		}
 	}
 	//fmt.Println("Passed return-nil test")
-	k := 0
-	if dtype.Out(dtype.NumOut() - 1) == reflect.TypeOf((*error)(nil)).Elem() {
-		k = 1
-	}
-	if foundNum < dtype.NumOut() - k {
+	if foundNum <  expectedNum {
 		return errors.New("the result types, with the exception of error, must be present among the input parameters")
 	}
 	pl, err := newParamList(dtype)
@@ -713,7 +706,7 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 		return err
 	}
 	//fmt.Println("checking... shallow dependency")
-	if err := shallowCheckDependencies(cp, pl); err != nil {
+	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
 		return errMissingDependencies{
 			Func:   digreflect.InspectFunc(dtor),
 			Reason: err,
@@ -732,7 +725,7 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 		return nil
 	}
 	//fmt.Println("running findAndValidateResults...")
-	keys, err := cp.findAndValidateResults(n, true)
+	keys, err := c.findAndValidateResults(n, true)
 	if err != nil {
 		return err
 	}
