@@ -205,7 +205,7 @@ func As(i ...interface{}) ProvideOption {
 type InvokeOption interface {
 	unimplemented()
 }
-
+var decorators = make(map[key][]*node)
 // Container is a directed acyclic graph of types and their dependencies.
 type Container struct {
 	// Mapping from key to all the nodes that can provide a value for that
@@ -238,12 +238,6 @@ type Container struct {
 
 	// Parent is the container that spawned this.
 	parent *Container
-
-	// All decorators declared in the current container mapped to each return node's key
-	decorators map[key][]*node
-
-	// All the decorators for to be used by the native nodes irrespective of where they are declared
-	nativeDecorators map[key][]*node
 }
 
 // containerWriter provides write access to the Container's underlying data
@@ -283,7 +277,7 @@ type containerStore interface {
 	getGroupProviders(name string, t reflect.Type) []provider
 
 	// Returns the decorator list of a particular node
-	getNativeDecorators(k key) []*node
+	getDecorators(k key) []*node
 
 	createGraph() *dot.Graph
 }
@@ -419,12 +413,12 @@ func (c *Container) getProviders(k key) []provider {
 	return providers
 }
 
-func (c *Container) getNativeDecorators(k key) []*node {
-	decorators := make([]*node, 0)
-	for i := len(c.nativeDecorators[k]) - 1; i >= 0; i-- {
-		decorators = append(decorators, c.nativeDecorators[k][i])
+func (c *Container) getDecorators(k key) []*node {
+	revDecorators := make([]*node, len(decorators[k]))
+	for i, v := range decorators[k] {
+		revDecorators[len(revDecorators) - 1 - i] = v
 	}
-	return decorators
+	return revDecorators
 }
 
 func (c *Container) getRoot() *Container {
@@ -551,6 +545,7 @@ func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error
 	}
 
 	if err := c.decorate(decorator, options); err != nil {
+		//panic("error in running decorate()")
 		return errConstructorFailed{
 			Func:   digreflect.InspectFunc(decorator),
 			Reason: err,
@@ -606,7 +601,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 		return err
 	}
 
-	keys, err := c.findAndValidateResults(n)
+	keys, err := c.findAndValidateResults(n, false)
 	if err != nil {
 		return err
 	}
@@ -637,7 +632,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 }
 
 // Builds a collection of all result types produced by this node.
-func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
+func (c *Container) findAndValidateResults(n *node, d bool) (map[key]struct{}, error) {
 	var err error
 	keyPaths := make(map[key]string)
 	walkResult(n.ResultList(), connectionVisitor{
@@ -645,7 +640,7 @@ func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 		n:        n,
 		err:      &err,
 		keyPaths: keyPaths,
-	})
+	}, d)
 
 	if err != nil {
 		return nil, err
@@ -660,20 +655,22 @@ func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 
 func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	dtype := reflect.TypeOf(dtor)
-
+	cp := c.getRoot()
 	// Verifying if output is present among the input params.
 	inTypes := make(map[string]int)
 	for i := 0; i < dtype.NumIn(); i++ {
 		in := dtype.In(i)
 		if reflect.TypeOf(in).Kind() == reflect.Struct {
-			inType := make(map[reflect.StructField]struct{})
+			//inType := make(map[reflect.StructField]struct{})
+			inType := make([]reflect.StructField, 0)
 			for j := 0; j < in.NumField(); j++ {
 				// Exclude dig.In field.
 				if in.Field(j).Type != _inType {
-					inType[in.Field(j)] = struct{}{}
+					//inType[in.Field(j)] = struct{}{}
+					inType = append(inType, in.Field(i))
 				}
 			}
-			inTypes[fmt.Sprintf("%v", inType)] = 1
+			inTypes[fmt.Sprintf("%v", reflect.StructOf(inType))] = 1
 		} else {
 			inTypes[fmt.Sprintf("%v", in)] = 1
 		}
@@ -683,18 +680,18 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	for i := 0; i < dtype.NumOut(); i++ {
 		out := dtype.Out(i)
 		// Assuming error is at the end of the return types
-		if out == reflect.TypeOf(error(nil)) {
+		if out == reflect.TypeOf((*error)(nil)).Elem() {
 			break
 		}
 		if reflect.TypeOf(out).Kind() == reflect.Struct {
-			outType := make(map[reflect.StructField]struct{})
+			outType := make([]reflect.StructField, 0)
 			for j := 0; j < out.NumField(); j++ {
 				// Exclude dig.Out field.
 				if out.Field(j).Type != _outType {
-					outType[out.Field(j)] = struct{}{}
+					outType = append(outType, out.Field(i))
 				}
 			}
-			if _, ok := inTypes[fmt.Sprintf("%v", outType)]; ok {
+			if _, ok := inTypes[fmt.Sprintf("%v", reflect.StructOf(outType))]; ok {
 				foundNum++
 			}
 		} else {
@@ -703,8 +700,9 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			}
 		}
 	}
+	//fmt.Println("Passed return-nil test")
 	k := 0
-	if dtype.Out(dtype.NumOut() - 1) == reflect.TypeOf(error(nil)) {
+	if dtype.Out(dtype.NumOut() - 1) == reflect.TypeOf((*error)(nil)).Elem() {
 		k = 1
 	}
 	if foundNum < dtype.NumOut() - k {
@@ -714,14 +712,14 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return err
 	}
-
-	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
+	//fmt.Println("checking... shallow dependency")
+	if err := shallowCheckDependencies(cp, pl); err != nil {
 		return errMissingDependencies{
 			Func:   digreflect.InspectFunc(dtor),
 			Reason: err,
 		}
 	}
-
+	//fmt.Println("checked shallow dependency")
 	n, err := newNode(
 		dtor,
 		nodeOptions{
@@ -733,11 +731,13 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return nil
 	}
-
-	keys, err := c.findAndValidateResults(n)
+	//fmt.Println("running findAndValidateResults...")
+	keys, err := cp.findAndValidateResults(n, true)
 	if err != nil {
 		return err
 	}
+
+	//fmt.Println("Keys:", keys)
 	// TODO : Check if error type affects decoration
 	for k := range keys {
 		found := false
@@ -747,26 +747,24 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 		if _, ok := c.providers[k]; !ok {
 			var cont []*Container
 			cont = append(cont, c.children...)
-			for !found || len(cont) == 0 {
+			for !found && !(len(cont) == 0) {
 				v := cont[0]
 				cont = cont[1:]
 				if _, ok := v.providers[k]; !ok {
 					cont = append(cont, v.children...)
 				} else {
 					found = true
-					v.nativeDecorators[k] = append(v.nativeDecorators[k], n)
+					decorators[k] = append(decorators[k], n)
 				}
 			}
 		} else {
 			found = true
-			c.nativeDecorators[k] = append(c.nativeDecorators[k], n)
+			decorators[k] = append(decorators[k], n)
 		}
-
+	//fmt.Println("Native Decorators:", c.nativeDecorators)
 		if !found {
 			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
 		}
-
-		c.decorators[k] = append(c.decorators[k], n)
 	}
 	return nil
 }
@@ -815,7 +813,7 @@ func (cv connectionVisitor) AnnotateWithPosition(i int) resultVisitor {
 	return cv
 }
 
-func (cv connectionVisitor) Visit(res result) resultVisitor {
+func (cv connectionVisitor) Visit(res result, d bool) resultVisitor {
 	// Already failed. Stop looking.
 	if *cv.err != nil {
 		return nil
@@ -827,16 +825,20 @@ func (cv connectionVisitor) Visit(res result) resultVisitor {
 
 	case resultSingle:
 		k := key{name: r.Name, t: r.Type}
-		if err := cv.checkKey(k, path); err != nil {
-			*cv.err = err
-			return nil
+		if !d {
+			if err := cv.checkKey(k, path); err != nil {
+				*cv.err = err
+				return nil
+			}
 		}
 		cv.keyPaths[k] = path
 		for _, asType := range r.As {
 			k := key{name: r.Name, t: asType}
-			if err := cv.checkKey(k, path); err != nil {
-				*cv.err = err
-				return nil
+			if !d {
+				if err := cv.checkKey(k, path); err != nil {
+					*cv.err = err
+					return nil
+				}
 			}
 			cv.keyPaths[k] = path
 		}

@@ -274,11 +274,12 @@ func (ps paramSingle) Build(c containerStore) (reflect.Value, error) {
 
 func (ps paramSingle) Decorate(c containerStore) (reflect.Value, error) {
 
-	decorators := c.getNativeDecorators(key{name: ps.Name, t: ps.Type})
-
+	decorators := c.getDecorators(key{name: ps.Name, t: ps.Type})
+	//fmt.Println("Decorators:", decorators)
 	for _, n := range decorators {
 		err := n.Call(c)
 		if err == nil {
+			//fmt.Println("Call Decorator:", n)
 			continue
 		}
 

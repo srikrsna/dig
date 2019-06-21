@@ -96,7 +96,7 @@ type resultVisitor interface {
 	//
 	// If Visit returns a non-nil resultVisitor, that resultVisitor visits all
 	// the child results of this result.
-	Visit(result) resultVisitor
+	Visit(result, bool) resultVisitor
 
 	// AnnotateWithField is called on each field of a resultObject after
 	// visiting it but before walking its descendants.
@@ -129,8 +129,8 @@ type resultVisitor interface {
 // descendants of that resultObject/resultList.
 //
 // This is very similar to how go/ast.Walk works.
-func walkResult(r result, v resultVisitor) {
-	v = v.Visit(r)
+func walkResult(r result, v resultVisitor, d bool) {
+	v = v.Visit(r, d)
 	if v == nil {
 		return
 	}
@@ -142,14 +142,14 @@ func walkResult(r result, v resultVisitor) {
 		w := v
 		for _, f := range res.Fields {
 			if v := w.AnnotateWithField(f); v != nil {
-				walkResult(f.Result, v)
+				walkResult(f.Result, v, d)
 			}
 		}
 	case resultList:
 		w := v
 		for i, r := range res.Results {
 			if v := w.AnnotateWithPosition(i); v != nil {
-				walkResult(r, v)
+				walkResult(r, v, d)
 			}
 		}
 	default:
