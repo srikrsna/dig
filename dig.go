@@ -205,7 +205,6 @@ func As(i ...interface{}) ProvideOption {
 type InvokeOption interface {
 	unimplemented()
 }
-//var decorators = make(map[key][]*node)
 // Container is a directed acyclic graph of types and their dependencies.
 type Container struct {
 	// Mapping from key to all the nodes that can provide a value for that
@@ -423,22 +422,19 @@ func (c *Container) getProviders(k key) []provider {
 
 func (c *Container) getDecorators(k key) []*node {
 	p := c
-	found := true
 	if _, ok := c.providers[k]; !ok {
-		var cont []*Container
-		cont = append(cont, c.children...)
-		for !found && !(len(cont) == 0) {
+		cont := c.children
+		for len(cont) > 0 {
 			v := cont[0]
 			cont = cont[1:]
 			if _, ok := v.providers[k]; !ok {
 				cont = append(cont, v.children...)
 			} else {
-				found = true
-				p = c
+				p = v
+				break
 			}
 		}
 	} else {
-		found = true
 		p = c
 	}
 	decorators := make([]*node, 0)
