@@ -266,7 +266,7 @@ type containerStore interface {
 	// Retrieves all values for the provided group and type.
 	//
 	// The order in which the values are returned is undefined.
-	getValueGroup(name string, t reflect.Type) []reflect.Value
+	getValueGroup(name string, t reflect.Type) ([]reflect.Value, bool)
 
 	// Returns the providers that can produce a value with the given name and
 	// type.
@@ -370,13 +370,17 @@ func (c *Container) getValue(name string, t reflect.Type) (v reflect.Value, ok b
 }
 
 func (c *Container) setValue(name string, t reflect.Type, v reflect.Value) {
-	c.values[key{name: name, t: t}] = v
+	k := key{t: t, name: name}
+	c.values[k] = v
 }
 
-func (c *Container) getValueGroup(name string, t reflect.Type) []reflect.Value {
-	items := c.groups[key{group: name, t: t}]
+func (c *Container) getValueGroup(name string, t reflect.Type) ([]reflect.Value, bool) {
+	items, ok := c.groups[key{group: name, t: t}]
+	if!ok {
+		return []reflect.Value{}, ok
+	}
 	// shuffle the list so users don't rely on the ordering of grouped values
-	return shuffledCopy(c.rand, items)
+	return shuffledCopy(c.rand, items), true
 }
 
 func (c *Container) submitGroupedValue(name string, t reflect.Type, v reflect.Value) {
@@ -632,7 +636,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 }
 
 // Builds a collection of all result types produced by this node.
-func (c *Container) findAndValidateResults(n *node, d bool) (map[key]struct{}, error) {
+func (c *Container) findAndValidateResults(n *node, isDecorator bool) (map[key]struct{}, error) {
 	var err error
 	keyPaths := make(map[key]string)
 	walkResult(n.ResultList(), connectionVisitor{
@@ -640,7 +644,7 @@ func (c *Container) findAndValidateResults(n *node, d bool) (map[key]struct{}, e
 		n:        n,
 		err:      &err,
 		keyPaths: keyPaths,
-	}, d)
+	}, isDecorator)
 
 	if err != nil {
 		return nil, err
@@ -705,7 +709,7 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return err
 	}
-	//fmt.Println("checking... shallow dependency")
+	//fmt.Println("checking... shallow dependency", pl)
 	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
 		return errMissingDependencies{
 			Func:   digreflect.InspectFunc(dtor),
@@ -729,14 +733,13 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return err
 	}
-
-	//fmt.Println("Keys:", keys)
-	// TODO : Check if error type affects decoration
 	for k := range keys {
 		found := false
-
 		// Checking for the decorator output's existence in the sub graph with the
 		// current container as root.
+		if k.group != "" {
+			k.t = k.t.Elem()
+		}
 		if _, ok := c.providers[k]; !ok {
 			var cont []*Container
 			cont = append(cont, c.children...)
@@ -754,7 +757,6 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			found = true
 			decorators[k] = append(decorators[k], n)
 		}
-	//fmt.Println("Native Decorators:", c.nativeDecorators)
 		if !found {
 			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
 		}
@@ -806,7 +808,7 @@ func (cv connectionVisitor) AnnotateWithPosition(i int) resultVisitor {
 	return cv
 }
 
-func (cv connectionVisitor) Visit(res result, d bool) resultVisitor {
+func (cv connectionVisitor) Visit(res result, isDecorator bool) resultVisitor {
 	// Already failed. Stop looking.
 	if *cv.err != nil {
 		return nil
@@ -818,18 +820,28 @@ func (cv connectionVisitor) Visit(res result, d bool) resultVisitor {
 
 	case resultSingle:
 		k := key{name: r.Name, t: r.Type}
-		if !d {
-			if err := cv.checkKey(k, path); err != nil {
+		if err := cv.checkKey(k, path); err != nil {
+			if !isDecorator {
 				*cv.err = err
+				return nil
+			}
+		} else {
+			if isDecorator {
+				*cv.err = fmt.Errorf("the type %v must be provided to decorate", r.Type)
 				return nil
 			}
 		}
 		cv.keyPaths[k] = path
 		for _, asType := range r.As {
 			k := key{name: r.Name, t: asType}
-			if !d {
-				if err := cv.checkKey(k, path); err != nil {
+			if err := cv.checkKey(k, path); err != nil {
+				if !isDecorator {
 					*cv.err = err
+					return nil
+				}
+			} else {
+				if isDecorator {
+					*cv.err = fmt.Errorf("the type %v must be provided to decorate", r.Type)
 					return nil
 				}
 			}
@@ -944,14 +956,12 @@ func (n *node) Call(c containerStore) error {
 	if n.called {
 		return nil
 	}
-
 	if err := shallowCheckDependencies(c, n.paramList); err != nil {
 		return errMissingDependencies{
 			Func:   n.location,
 			Reason: err,
 		}
 	}
-
 	args, err := n.paramList.BuildList(c)
 	if err != nil {
 		return errArgumentsFailed{
@@ -959,7 +969,9 @@ func (n *node) Call(c containerStore) error {
 			Reason: err,
 		}
 	}
-
+	if n.called {
+		return nil
+	}
 	receiver := newStagingContainerWriter()
 	results := reflect.ValueOf(n.ctor).Call(args)
 	if err := n.resultList.ExtractList(receiver, results); err != nil {
@@ -1017,6 +1029,7 @@ func shallowCheckDependencies(c containerStore, p param) error {
 type stagingContainerWriter struct {
 	values map[key]reflect.Value
 	groups map[key][]reflect.Value
+	isDecorated map[key]bool
 }
 
 var _ containerWriter = (*stagingContainerWriter)(nil)

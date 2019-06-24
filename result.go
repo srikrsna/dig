@@ -129,8 +129,8 @@ type resultVisitor interface {
 // descendants of that resultObject/resultList.
 //
 // This is very similar to how go/ast.Walk works.
-func walkResult(r result, v resultVisitor, d bool) {
-	v = v.Visit(r, d)
+func walkResult(r result, v resultVisitor, isDecorator bool) {
+	v = v.Visit(r, isDecorator)
 	if v == nil {
 		return
 	}
@@ -142,14 +142,14 @@ func walkResult(r result, v resultVisitor, d bool) {
 		w := v
 		for _, f := range res.Fields {
 			if v := w.AnnotateWithField(f); v != nil {
-				walkResult(f.Result, v, d)
+				walkResult(f.Result, v, isDecorator)
 			}
 		}
 	case resultList:
 		w := v
 		for i, r := range res.Results {
 			if v := w.AnnotateWithPosition(i); v != nil {
-				walkResult(r, v, d)
+				walkResult(r, v, isDecorator)
 			}
 		}
 	default:

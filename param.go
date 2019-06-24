@@ -264,9 +264,8 @@ func (ps paramSingle) Build(c containerStore) (reflect.Value, error) {
 			Reason: err,
 		}
 	}
-
 	if v, err := ps.Decorate(c); err != nil {
-		return reflect.ValueOf(nil), err
+		return _noValue, err
 	} else {
 		return v, nil
 	}
@@ -275,14 +274,11 @@ func (ps paramSingle) Build(c containerStore) (reflect.Value, error) {
 func (ps paramSingle) Decorate(c containerStore) (reflect.Value, error) {
 
 	decorators := c.getDecorators(key{name: ps.Name, t: ps.Type})
-	//fmt.Println("Decorators:", decorators)
 	for _, n := range decorators {
 		err := n.Call(c)
 		if err == nil {
-			//fmt.Println("Call Decorator:", n)
 			continue
 		}
-
 		return _noValue, errParamSingleFailed{
 			CtorID: n.ID(),
 			Key:    key{t: ps.Type, name: ps.Name},
@@ -472,6 +468,13 @@ func newParamGroupedSlice(f reflect.StructField) (paramGroupedSlice, error) {
 }
 
 func (pt paramGroupedSlice) Build(c containerStore) (reflect.Value, error) {
+	if items, ok := c.getValueGroup(pt.Group, pt.Type.Elem()); ok {
+		result := reflect.MakeSlice(pt.Type, len(items), len(items))
+		for i, v := range items {
+			result.Index(i).Set(v)
+		}
+		return result, nil
+	}
 	for _, n := range c.getGroupProviders(pt.Group, pt.Type.Elem()) {
 		if err := n.Call(c); err != nil {
 			return _noValue, errParamGroupFailed{
@@ -481,16 +484,25 @@ func (pt paramGroupedSlice) Build(c containerStore) (reflect.Value, error) {
 			}
 		}
 	}
+	val, err := pt.Decorate(c)
+	if err != nil {
+		return _noValue, err
+	}
+	return val, nil
+}
 
-	items := c.getValueGroup(pt.Group, pt.Type.Elem())
+func (pt paramGroupedSlice) Decorate(c containerStore) (reflect.Value, error) {
+	decs := c.getDecorators(key{t: pt.Type.Elem(), group: pt.Group})
+	for _, n := range decs {
+		if err := n.Call(c); err != nil {
+			return _noValue, err
+		}
+	}
+	items, _ := c.getValueGroup(pt.Group, pt.Type.Elem())
 
 	result := reflect.MakeSlice(pt.Type, len(items), len(items))
 	for i, v := range items {
 		result.Index(i).Set(v)
 	}
 	return result, nil
-}
-
-func (pl paramGroupedSlice) Decorate(c containerStore) (reflect.Value, error) {
-	panic("not supposed to happen")
 }
