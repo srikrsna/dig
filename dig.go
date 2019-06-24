@@ -205,7 +205,7 @@ func As(i ...interface{}) ProvideOption {
 type InvokeOption interface {
 	unimplemented()
 }
-var decorators = make(map[key][]*node)
+//var decorators = make(map[key][]*node)
 // Container is a directed acyclic graph of types and their dependencies.
 type Container struct {
 	// Mapping from key to all the nodes that can provide a value for that
@@ -238,6 +238,9 @@ type Container struct {
 
 	// Parent is the container that spawned this.
 	parent *Container
+
+	// Decorator functions of already provided dependencies
+	decorators map[key][]*node
 }
 
 // containerWriter provides write access to the Container's underlying data
@@ -312,6 +315,7 @@ func New(opts ...Option) *Container {
 		providers: make(map[key][]*node),
 		values:    make(map[key]reflect.Value),
 		groups:    make(map[key][]reflect.Value),
+		decorators: make(map[key][]*node),
 		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
@@ -418,11 +422,15 @@ func (c *Container) getProviders(k key) []provider {
 }
 
 func (c *Container) getDecorators(k key) []*node {
-	revDecorators := make([]*node, len(decorators[k]))
-	for i, v := range decorators[k] {
-		revDecorators[len(revDecorators) - 1 - i] = v
+	decorators := make([]*node, 0)
+	p := c
+	for p != nil {
+		if _, ok := p.decorators[k]; ok {
+			decorators = append(decorators, p.decorators[k]...)
+		}
+		p = p.parent
 	}
-	return revDecorators
+	return decorators
 }
 
 func (c *Container) getRoot() *Container {
@@ -555,7 +563,6 @@ func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error
 			Reason: err,
 		}
 	}
-
 	return nil
 }
 
@@ -570,6 +577,7 @@ func (c *Container) Child(name string) *Container {
 		providers: make(map[key][]*node),
 		values:    make(map[key]reflect.Value),
 		groups:    make(map[key][]reflect.Value),
+		decorators: make(map[key][]*node),
 		rand:      c.rand,
 		name:      name,
 		parent:    c,
@@ -750,17 +758,18 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 					cont = append(cont, v.children...)
 				} else {
 					found = true
-					decorators[k] = append(decorators[k], n)
+					c.decorators[k] = append(c.decorators[k], n)
 				}
 			}
 		} else {
 			found = true
-			decorators[k] = append(decorators[k], n)
+			c.decorators[k] = append(c.decorators[k], n)
 		}
 		if !found {
 			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
 		}
 	}
+	fmt.Println(c.decorators)
 	return nil
 }
 

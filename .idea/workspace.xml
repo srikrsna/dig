@@ -5,7 +5,6 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dig.go" beforeDir="false" afterPath="$PROJECT_DIR$/dig.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/param.go" beforeDir="false" afterPath="$PROJECT_DIR$/param.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/result.go" beforeDir="false" afterPath="$PROJECT_DIR$/result.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -20,8 +19,8 @@
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/dig.go">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="-251">
-                  <caret line="400" column="37" selection-start-line="400" selection-start-column="20" selection-end-line="400" selection-end-column="37" />
+                <state relative-caret-position="256">
+                  <caret line="434" column="9" selection-start-line="434" selection-start-column="9" selection-end-line="434" selection-end-column="9" />
                   <folding>
                     <element signature="e#1135#1296#0" expanded="true" />
                   </folding>
@@ -32,11 +31,20 @@
           <file pinned="false" current-in-tab="false">
             <entry file="file://$PROJECT_DIR$/../../test/main2.go">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="496">
-                  <caret line="193" column="17" lean-forward="true" selection-start-line="193" selection-start-column="17" selection-end-line="193" selection-end-column="17" />
+                <state relative-caret-position="311">
+                  <caret line="192" column="34" lean-forward="true" selection-start-line="192" selection-start-column="34" selection-end-line="192" selection-end-column="34" />
                   <folding>
                     <element signature="e#14#128#0" expanded="true" />
                   </folding>
+                </state>
+              </provider>
+            </entry>
+          </file>
+          <file pinned="false" current-in-tab="false">
+            <entry file="file://$USER_HOME$/tasks.txt">
+              <provider selected="true" editor-type-id="text-editor">
+                <state relative-caret-position="315">
+                  <caret line="15" column="40" selection-start-line="15" selection-start-column="40" selection-end-line="15" selection-end-column="40" />
                 </state>
               </provider>
             </entry>
@@ -53,18 +61,13 @@
           <file pinned="false" current-in-tab="false">
             <entry file="file://$PROJECT_DIR$/param.go">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="190">
-                  <caret line="288" column="16" selection-start-line="288" selection-start-column="13" selection-end-line="288" selection-end-column="16" />
+                <state relative-caret-position="1912">
+                  <caret line="487" column="19" selection-start-line="487" selection-start-column="19" selection-end-line="487" selection-end-column="19" />
                   <folding>
                     <element signature="e#1135#1206#0" expanded="true" />
                   </folding>
                 </state>
               </provider>
-            </entry>
-          </file>
-          <file pinned="false" current-in-tab="false">
-            <entry file="file://$PROJECT_DIR$/graph.go">
-              <provider selected="true" editor-type-id="text-editor" />
             </entry>
           </file>
           <file pinned="false" current-in-tab="false">
@@ -86,8 +89,8 @@
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/param.go">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="209">
-                  <caret line="477" column="35" lean-forward="true" selection-start-line="477" selection-start-column="35" selection-end-line="477" selection-end-column="35" />
+                <state relative-caret-position="1486">
+                  <caret line="235" column="27" selection-start-line="235" selection-start-column="22" selection-end-line="235" selection-end-column="27" />
                   <folding>
                     <element signature="e#1135#1206#0" expanded="true" />
                   </folding>
@@ -101,7 +104,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>ResultList</find>
       <find>walkResult</find>
       <find>New</find>
       <find>getNativeDecorators</find>
@@ -111,14 +113,12 @@
       <find>resultList</find>
       <find>setGroupedValue</find>
       <find>Visit</find>
-      <find>getValueGroup</find>
       <find>d</find>
       <find>fmt</find>
       <find>fmt.Println</find>
       <find>submitGroupedValue</find>
       <find>decorate</find>
       <find>containerStore</find>
-      <find>Build</find>
       <find>paramGroupedSlice</find>
       <find>Container</find>
       <find>setValue</find>
@@ -126,11 +126,14 @@
       <find>Commit</find>
       <find>paramObject</find>
       <find>getStatus</find>
-      <find>setStatus</find>
-      <find>getDecorators</find>
       <find>decorators</find>
       <find>Call</find>
       <find>getGroupProviders</find>
+      <find>getValueGroup</find>
+      <find>setStatus</find>
+      <find>Build</find>
+      <find>Child</find>
+      <find>getDecorators</find>
     </findStrings>
     <replaceStrings>
       <replace>isDecorator</replace>
@@ -148,9 +151,9 @@
         <option value="$PROJECT_DIR$/../tasks.txt" />
         <option value="$USER_HOME$/tasks.txt" />
         <option value="$PROJECT_DIR$/result.go" />
+        <option value="$PROJECT_DIR$/../../test/main2.go" />
         <option value="$PROJECT_DIR$/param.go" />
         <option value="$PROJECT_DIR$/dig.go" />
-        <option value="$PROJECT_DIR$/../../test/main2.go" />
       </list>
     </option>
   </component>
@@ -189,7 +192,7 @@
     <property name="go.gopath.indexing.explicitly.defined" value="true" />
     <property name="go.import.settings.migrated" value="true" />
     <property name="go.sdk.automatically.set" value="true" />
-    <property name="last_opened_file_path" value="$USER_HOME$/tasks.txt" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../../go.appointy.com/jaal" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="nodejs_package_manager_path" value="npm" />
@@ -213,7 +216,6 @@
       <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.15218595" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
-      <window_info anchor="bottom" id="Messages" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
       <window_info anchor="bottom" id="Run" order="2" />
@@ -224,8 +226,9 @@
       <window_info anchor="bottom" id="Docker" order="7" show_stripe_button="false" />
       <window_info anchor="bottom" id="Database Changes" order="8" />
       <window_info anchor="bottom" id="Version Control" order="9" />
-      <window_info active="true" anchor="bottom" x="85" y="435" width="1817" height="245" id="Terminal" order="10" visible="true" weight="0.26973686" />
+      <window_info active="true" anchor="bottom" x="85" y="435" width="1817" height="245" id="Terminal" order="10" visible="true" weight="0.2598684" />
       <window_info anchor="bottom" id="Event Log" order="11" side_tool="true" />
+      <window_info anchor="bottom" id="Messages" order="12" />
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
@@ -241,7 +244,6 @@
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/../../test/main2.go</url>
           <line>153</line>
-          <properties />
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
@@ -270,9 +272,6 @@
     <entry file="file://$PROJECT_DIR$/dig_test.go">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
-    <entry file="file://$PROJECT_DIR$/graph.go">
-      <provider selected="true" editor-type-id="text-editor" />
-    </entry>
     <entry file="file:///usr/local/go/src/reflect/type.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="1911">
@@ -290,13 +289,6 @@
     <entry file="file://$PROJECT_DIR$/../../test/Tasks.txt">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
-    <entry file="file://$USER_HOME$/tasks.txt">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="315">
-          <caret line="15" column="40" lean-forward="true" selection-start-line="15" selection-start-column="40" selection-end-line="15" selection-end-column="40" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/types.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="369">
@@ -311,13 +303,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/error.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="245">
-          <caret line="108" column="28" selection-start-line="108" selection-start-column="8" selection-end-line="108" selection-end-column="28" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/result.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="169">
@@ -328,30 +313,47 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/../../test/main2.go">
+    <entry file="file://$PROJECT_DIR$/graph.go">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/error.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="496">
-          <caret line="193" column="17" lean-forward="true" selection-start-line="193" selection-start-column="17" selection-end-line="193" selection-end-column="17" />
-          <folding>
-            <element signature="e#14#128#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="245">
+          <caret line="108" column="28" selection-start-line="108" selection-start-column="8" selection-end-line="108" selection-end-column="28" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/tasks.txt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="315">
+          <caret line="15" column="40" selection-start-line="15" selection-start-column="40" selection-end-line="15" selection-end-column="40" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/param.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="190">
-          <caret line="288" column="16" selection-start-line="288" selection-start-column="13" selection-end-line="288" selection-end-column="16" />
+        <state relative-caret-position="1912">
+          <caret line="487" column="19" selection-start-line="487" selection-start-column="19" selection-end-line="487" selection-end-column="19" />
           <folding>
             <element signature="e#1135#1206#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/../../test/main2.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="311">
+          <caret line="192" column="34" lean-forward="true" selection-start-line="192" selection-start-column="34" selection-end-line="192" selection-end-column="34" />
+          <folding>
+            <element signature="e#14#128#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/dig.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-251">
-          <caret line="400" column="37" selection-start-line="400" selection-start-column="20" selection-end-line="400" selection-end-column="37" />
+        <state relative-caret-position="256">
+          <caret line="434" column="9" selection-start-line="434" selection-start-column="9" selection-end-line="434" selection-end-column="9" />
           <folding>
             <element signature="e#1135#1296#0" expanded="true" />
           </folding>

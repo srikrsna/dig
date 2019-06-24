@@ -343,7 +343,7 @@ func (po paramObject) Build(c containerStore) (reflect.Value, error) {
 	return dest, nil
 }
 
-func (pl paramObject) Decorate(c containerStore) (reflect.Value, error) {
+func (po paramObject) Decorate(c containerStore) (reflect.Value, error) {
 	panic("not supposed to happen")
 }
 
@@ -418,7 +418,7 @@ func (pof paramObjectField) Build(c containerStore) (reflect.Value, error) {
 	return v, nil
 }
 
-func (pl paramObjectField) Decorate(c containerStore) (reflect.Value, error) {
+func (pof paramObjectField) Decorate(c containerStore) (reflect.Value, error) {
 	panic("not supposed not happen")
 }
 
