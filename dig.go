@@ -422,8 +422,26 @@ func (c *Container) getProviders(k key) []provider {
 }
 
 func (c *Container) getDecorators(k key) []*node {
-	decorators := make([]*node, 0)
 	p := c
+	found := true
+	if _, ok := c.providers[k]; !ok {
+		var cont []*Container
+		cont = append(cont, c.children...)
+		for !found && !(len(cont) == 0) {
+			v := cont[0]
+			cont = cont[1:]
+			if _, ok := v.providers[k]; !ok {
+				cont = append(cont, v.children...)
+			} else {
+				found = true
+				p = c
+			}
+		}
+	} else {
+		found = true
+		p = c
+	}
+	decorators := make([]*node, 0)
 	for p != nil {
 		if _, ok := p.decorators[k]; ok {
 			decorators = append(decorators, p.decorators[k]...)
