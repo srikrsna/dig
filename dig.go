@@ -723,7 +723,6 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			}
 		}
 	}
-	//fmt.Println("Passed return-nil test")
 	if foundNum <  expectedNum {
 		return errors.New("the result types, with the exception of error, must be present among the input parameters")
 	}
@@ -731,14 +730,12 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return err
 	}
-	//fmt.Println("checking... shallow dependency", pl)
 	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
 		return errMissingDependencies{
 			Func:   digreflect.InspectFunc(dtor),
 			Reason: err,
 		}
 	}
-	//fmt.Println("checked shallow dependency")
 	n, err := newNode(
 		dtor,
 		nodeOptions{
@@ -750,7 +747,6 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 	if err != nil {
 		return nil
 	}
-	//fmt.Println("running findAndValidateResults...")
 	keys, err := c.findAndValidateResults(n, true)
 	if err != nil {
 		return err
@@ -783,7 +779,6 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
 		}
 	}
-	fmt.Println(c.decorators)
 	return nil
 }
 
