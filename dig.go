@@ -205,6 +205,7 @@ func As(i ...interface{}) ProvideOption {
 type InvokeOption interface {
 	unimplemented()
 }
+
 // Container is a directed acyclic graph of types and their dependencies.
 type Container struct {
 	// Mapping from key to all the nodes that can provide a value for that
@@ -311,11 +312,11 @@ type provider interface {
 // New constructs a Container.
 func New(opts ...Option) *Container {
 	c := &Container{
-		providers: make(map[key][]*node),
-		values:    make(map[key]reflect.Value),
-		groups:    make(map[key][]reflect.Value),
+		providers:  make(map[key][]*node),
+		values:     make(map[key]reflect.Value),
+		groups:     make(map[key][]reflect.Value),
 		decorators: make(map[key][]*node),
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	for _, opt := range opts {
@@ -379,7 +380,7 @@ func (c *Container) setValue(name string, t reflect.Type, v reflect.Value) {
 
 func (c *Container) getValueGroup(name string, t reflect.Type) ([]reflect.Value, bool) {
 	items, ok := c.groups[key{group: name, t: t}]
-	if!ok {
+	if !ok {
 		return []reflect.Value{}, ok
 	}
 	// shuffle the list so users don't rely on the ordering of grouped values
@@ -553,7 +554,7 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 	return nil
 }
 
-func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error{
+func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error {
 	dtype := reflect.TypeOf(decorator)
 	if dtype == nil {
 		return errors.New("can't decorate with an untyped nil")
@@ -588,13 +589,13 @@ func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error
 // does not have to be unique across different children of the container.
 func (c *Container) Child(name string) *Container {
 	child := &Container{
-		providers: make(map[key][]*node),
-		values:    make(map[key]reflect.Value),
-		groups:    make(map[key][]reflect.Value),
+		providers:  make(map[key][]*node),
+		values:     make(map[key]reflect.Value),
+		groups:     make(map[key][]reflect.Value),
 		decorators: make(map[key][]*node),
-		rand:      c.rand,
-		name:      name,
-		parent:    c,
+		rand:       c.rand,
+		name:       name,
+		parent:     c,
 	}
 
 	c.children = append(c.children, child)
@@ -690,7 +691,12 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			for j := 0; j < in.NumField(); j++ {
 				// Exclude dig.In field.
 				if in.Field(j).Type != _inType {
-					inTypes[fmt.Sprintf("%v", in.Field(j).Type)] = 1
+					t := in.Field(j).Type
+					// Exclude fx.In field
+					if t.Kind() == reflect.Struct && t.Field(0).Type == _inType {
+						continue
+					}
+					inTypes[fmt.Sprintf("%v", t)] = 1
 				}
 			}
 		} else {
@@ -710,8 +716,13 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			for j := 0; j < out.NumField(); j++ {
 				// Exclude dig.Out field.
 				if out.Field(j).Type != _outType {
+					t := out.Field(j).Type
+					// Exclude fx.Out field
+					if t.Kind() == reflect.Struct && t.Field(0).Type == _outType {
+						continue
+					}
 					expectedNum++
-					if _, ok := inTypes[fmt.Sprintf("%v", out.Field(j).Type)]; ok {
+					if _, ok := inTypes[fmt.Sprintf("%v", t)]; ok {
 						foundNum++
 					}
 				}
@@ -723,7 +734,7 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 			}
 		}
 	}
-	if foundNum <  expectedNum {
+	if foundNum < expectedNum {
 		return errors.New("the result types, with the exception of error, must be present among the input parameters")
 	}
 	pl, err := newParamList(dtype)
@@ -1045,8 +1056,8 @@ func shallowCheckDependencies(c containerStore, p param) error {
 // stagingContainerWriter is a containerWriter that records the changes that
 // would be made to a containerWriter and defers them until Commit is called.
 type stagingContainerWriter struct {
-	values map[key]reflect.Value
-	groups map[key][]reflect.Value
+	values      map[key]reflect.Value
+	groups      map[key][]reflect.Value
 	isDecorated map[key]bool
 }
 
