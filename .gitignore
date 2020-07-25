@@ -1,5 +1,7 @@
 /vendor
 /.bench
+.idea/
+.vscode/
 *.mem
 *.cpu
 *.test
