@@ -572,7 +572,6 @@ func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error
 	}
 
 	if err := c.decorate(decorator, options); err != nil {
-		//panic("error in running decorate()")
 		return errConstructorFailed{
 			Func:   digreflect.InspectFunc(decorator),
 			Reason: err,
@@ -628,7 +627,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 		return err
 	}
 
-	keys, err := c.findAndValidateResults(n, false)
+	keys, err := c.findAndValidateResults(n)
 	if err != nil {
 		return err
 	}
@@ -659,7 +658,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 }
 
 // Builds a collection of all result types produced by this node.
-func (c *Container) findAndValidateResults(n *node, isDecorator bool) (map[key]struct{}, error) {
+func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 	var err error
 	keyPaths := make(map[key]string)
 	walkResult(n.ResultList(), connectionVisitor{
@@ -667,7 +666,7 @@ func (c *Container) findAndValidateResults(n *node, isDecorator bool) (map[key]s
 		n:        n,
 		err:      &err,
 		keyPaths: keyPaths,
-	}, isDecorator)
+	})
 
 	if err != nil {
 		return nil, err
@@ -681,72 +680,6 @@ func (c *Container) findAndValidateResults(n *node, isDecorator bool) (map[key]s
 }
 
 func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
-	dtype := reflect.TypeOf(dtor)
-
-	// Verifying if output is present among the input params.
-	inTypes := make(map[string]int)
-	for i := 0; i < dtype.NumIn(); i++ {
-		in := dtype.In(i)
-		if in.Kind() == reflect.Struct {
-			for j := 0; j < in.NumField(); j++ {
-				// Exclude dig.In field.
-				if in.Field(j).Type != _inType {
-					t := in.Field(j).Type
-					// Exclude fx.In field
-					if t.Kind() == reflect.Struct && t.Field(0).Type == _inType {
-						continue
-					}
-					inTypes[fmt.Sprintf("%v", t)] = 1
-				}
-			}
-		} else {
-			inTypes[fmt.Sprintf("%v", in)] = 1
-		}
-	}
-
-	foundNum := 0
-	expectedNum := 0
-	for i := 0; i < dtype.NumOut(); i++ {
-		out := dtype.Out(i)
-		// Assuming error is at the end of the return types
-		if out == reflect.TypeOf((*error)(nil)).Elem() {
-			break
-		}
-		if out.Kind() == reflect.Struct {
-			for j := 0; j < out.NumField(); j++ {
-				// Exclude dig.Out field.
-				if out.Field(j).Type != _outType {
-					t := out.Field(j).Type
-					// Exclude fx.Out field
-					if t.Kind() == reflect.Struct && t.Field(0).Type == _outType {
-						continue
-					}
-					expectedNum++
-					if _, ok := inTypes[fmt.Sprintf("%v", t)]; ok {
-						foundNum++
-					}
-				}
-			}
-		} else {
-			expectedNum++
-			if _, ok := inTypes[fmt.Sprintf("%v", out)]; ok {
-				foundNum++
-			}
-		}
-	}
-	if foundNum < expectedNum {
-		return errors.New("the result types, with the exception of error, must be present among the input parameters")
-	}
-	pl, err := newParamList(dtype)
-	if err != nil {
-		return err
-	}
-	if err := shallowCheckDependencies(c.getRoot(), pl); err != nil {
-		return errMissingDependencies{
-			Func:   digreflect.InspectFunc(dtor),
-			Reason: err,
-		}
-	}
 	n, err := newNode(
 		dtor,
 		nodeOptions{
@@ -756,19 +689,91 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 		},
 	)
 	if err != nil {
-		return nil
-	}
-	keys, err := c.findAndValidateResults(n, true)
-	if err != nil {
 		return err
 	}
-	for k := range keys {
+
+	dtype := reflect.TypeOf(dtor)
+
+	// Check if all the result types exist among the input types
+	inTypes := make(map[key]struct{})
+	for i := 0; i < dtype.NumIn(); i++ {
+		in := dtype.In(i)
+		if IsIn(in) {
+			for j := 0; j < in.NumField(); j++ {
+				t := in.Field(j).Type
+				//Exclude embedded In type
+				if IsIn(t) {
+					continue
+				}
+				name := in.Field(j).Tag.Get(_nameTag)
+				group := in.Field(j).Tag.Get(_groupTag)
+				if name != "" && group != "" {
+					return errors.New("cannot use name tags and group tags together")
+				}
+				if group != "" {
+					if _, ok := inTypes[key{t.Elem(), name, group}]; ok {
+						return fmt.Errorf("cannot provide %v multple times in decorator", t)
+					}
+					inTypes[key{t.Elem(), name, group}] = struct{}{}
+				} else {
+					if _, ok := inTypes[key{t, name, group}]; ok {
+						return fmt.Errorf("cannot provide %v multple times in decorator", t)
+					}
+					inTypes[key{t, name, group}] = struct{}{}
+				}
+			}
+		} else {
+			inTypes[key{t: in}] = struct{}{}
+		}
+	}
+	outTypes := make(map[key]struct{})
+	for i := 0; i < dtype.NumOut(); i++ {
+		out := dtype.Out(i)
+		if IsOut(out) {
+			for j := 0; j < out.NumField(); j++ {
+				t := out.Field(j).Type
+				//Exclude embedded Out type
+				if IsOut(t) {
+					continue
+				}
+				name := out.Field(j).Tag.Get(_nameTag)
+				group := out.Field(j).Tag.Get(_groupTag)
+				if name != "" && group != "" {
+					return errors.New("cannot use name tags and group tags together")
+				}
+				if _, ok := outTypes[key{t, name, group}]; ok {
+					return fmt.Errorf("cannot provide %v multple times in decorator", t)
+				}
+				outTypes[key{t, name, group}] = struct{}{}
+			}
+		} else {
+			outTypes[key{t: out}] = struct{}{}
+		}
+	}
+
+	for k := range outTypes {
+		if _, ok := inTypes[k]; !ok {
+			return errors.New("the result types, with the exception of error, must be present among the input parameters")
+		}
+		delete(inTypes, k)
+	}
+
+	params := []param{}
+	for k := range inTypes {
+		if k.group != "" {
+			params = append(params, paramGroupedSlice{k.group, reflect.SliceOf(k.t)})
+		} else {
+			params = append(params, paramSingle{
+				Name: k.name,
+				Type: k.t,
+			})
+		}
+	}
+
+	for k := range outTypes {
 		found := false
 		// Checking for the decorator output's existence in the sub graph with the
 		// current container as root.
-		if k.group != "" {
-			k.t = k.t.Elem()
-		}
 		if _, ok := c.providers[k]; !ok {
 			var cont []*Container
 			cont = append(cont, c.children...)
@@ -779,16 +784,33 @@ func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
 					cont = append(cont, v.children...)
 				} else {
 					found = true
-					c.decorators[k] = append(c.decorators[k], n)
 				}
 			}
 		} else {
 			found = true
-			c.decorators[k] = append(c.decorators[k], n)
 		}
 		if !found {
 			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
 		}
+
+		if len(params) > 0 {
+			c.isVerifiedAcyclic = false
+			oldParams := n.paramList.Params
+			oldProviders := c.providers[k]
+			for _, p := range c.providers[k] {
+				params = append(params, p.paramList.Params...)
+			}
+			n.paramList.Params = params
+			c.providers[k] = append([]*node{n}, c.providers[k]...)
+			if err := verifyAcyclic(c.getRoot(), n, k); err != nil {
+				c.providers[k] = oldProviders
+				return err
+			}
+			c.providers[k] = oldProviders
+			n.paramList.Params = oldParams
+			c.isVerifiedAcyclic = true
+		}
+		c.decorators[k] = append(c.decorators[k], n)
 	}
 	return nil
 }
@@ -837,7 +859,7 @@ func (cv connectionVisitor) AnnotateWithPosition(i int) resultVisitor {
 	return cv
 }
 
-func (cv connectionVisitor) Visit(res result, isDecorator bool) resultVisitor {
+func (cv connectionVisitor) Visit(res result) resultVisitor {
 	// Already failed. Stop looking.
 	if *cv.err != nil {
 		return nil
@@ -850,29 +872,16 @@ func (cv connectionVisitor) Visit(res result, isDecorator bool) resultVisitor {
 	case resultSingle:
 		k := key{name: r.Name, t: r.Type}
 		if err := cv.checkKey(k, path); err != nil {
-			if !isDecorator {
-				*cv.err = err
-				return nil
-			}
-		} else {
-			if isDecorator {
-				*cv.err = fmt.Errorf("the type %v must be provided to decorate", r.Type)
-				return nil
-			}
+			*cv.err = err
+			return nil
 		}
+
 		cv.keyPaths[k] = path
 		for _, asType := range r.As {
 			k := key{name: r.Name, t: asType}
 			if err := cv.checkKey(k, path); err != nil {
-				if !isDecorator {
-					*cv.err = err
-					return nil
-				}
-			} else {
-				if isDecorator {
-					*cv.err = fmt.Errorf("the type %v must be provided to decorate", r.Type)
-					return nil
-				}
+				*cv.err = err
+				return nil
 			}
 			cv.keyPaths[k] = path
 		}
