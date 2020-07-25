@@ -48,6 +48,7 @@ type param interface {
 	// This MAY panic if the param does not produce a single value.
 	Build(containerStore) (reflect.Value, error)
 
+	Decorate(containerStore) (reflect.Value, error)
 	// DotParam returns a slice of dot.Param(s).
 	DotParam() []*dot.Param
 }
@@ -206,6 +207,10 @@ func (pl paramList) BuildList(c containerStore) ([]reflect.Value, error) {
 	return args, nil
 }
 
+func (pl paramList) Decorate(c containerStore) (reflect.Value, error) {
+	panic("not supposed to happen")
+}
+
 // paramSingle is an explicitly requested type, optionally with a name.
 //
 // This object must be present in the graph as-is unless it's specified as
@@ -253,6 +258,27 @@ func (ps paramSingle) Build(c containerStore) (reflect.Value, error) {
 			return reflect.Zero(ps.Type), nil
 		}
 
+		return _noValue, errParamSingleFailed{
+			CtorID: n.ID(),
+			Key:    key{t: ps.Type, name: ps.Name},
+			Reason: err,
+		}
+	}
+	if v, err := ps.Decorate(c); err != nil {
+		return _noValue, err
+	} else {
+		return v, nil
+	}
+}
+
+func (ps paramSingle) Decorate(c containerStore) (reflect.Value, error) {
+
+	decorators := c.getDecorators(key{name: ps.Name, t: ps.Type})
+	for _, n := range decorators {
+		err := n.Call(c)
+		if err == nil {
+			continue
+		}
 		return _noValue, errParamSingleFailed{
 			CtorID: n.ID(),
 			Key:    key{t: ps.Type, name: ps.Name},
@@ -315,6 +341,10 @@ func (po paramObject) Build(c containerStore) (reflect.Value, error) {
 		dest.Field(f.FieldIndex).Set(v)
 	}
 	return dest, nil
+}
+
+func (po paramObject) Decorate(c containerStore) (reflect.Value, error) {
+	panic("not supposed to happen")
 }
 
 // paramObjectField is a single field of a dig.In struct.
@@ -388,6 +418,10 @@ func (pof paramObjectField) Build(c containerStore) (reflect.Value, error) {
 	return v, nil
 }
 
+func (pof paramObjectField) Decorate(c containerStore) (reflect.Value, error) {
+	panic("not supposed not happen")
+}
+
 // paramGroupedSlice is a param which produces a slice of values with the same
 // group name.
 type paramGroupedSlice struct {
@@ -434,6 +468,13 @@ func newParamGroupedSlice(f reflect.StructField) (paramGroupedSlice, error) {
 }
 
 func (pt paramGroupedSlice) Build(c containerStore) (reflect.Value, error) {
+	if items, ok := c.getValueGroup(pt.Group, pt.Type.Elem()); ok {
+		result := reflect.MakeSlice(pt.Type, len(items), len(items))
+		for i, v := range items {
+			result.Index(i).Set(v)
+		}
+		return result, nil
+	}
 	for _, n := range c.getGroupProviders(pt.Group, pt.Type.Elem()) {
 		if err := n.Call(c); err != nil {
 			return _noValue, errParamGroupFailed{
@@ -443,8 +484,21 @@ func (pt paramGroupedSlice) Build(c containerStore) (reflect.Value, error) {
 			}
 		}
 	}
+	val, err := pt.Decorate(c)
+	if err != nil {
+		return _noValue, err
+	}
+	return val, nil
+}
 
-	items := c.getValueGroup(pt.Group, pt.Type.Elem())
+func (pt paramGroupedSlice) Decorate(c containerStore) (reflect.Value, error) {
+	decs := c.getDecorators(key{t: pt.Type.Elem(), group: pt.Group})
+	for _, n := range decs {
+		if err := n.Call(c); err != nil {
+			return _noValue, err
+		}
+	}
+	items, _ := c.getValueGroup(pt.Group, pt.Type.Elem())
 
 	result := reflect.MakeSlice(pt.Type, len(items), len(items))
 	for i, v := range items {

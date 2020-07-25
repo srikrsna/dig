@@ -238,6 +238,9 @@ type Container struct {
 
 	// Parent is the container that spawned this.
 	parent *Container
+
+	// Decorator functions of already provided dependencies
+	decorators map[key][]*node
 }
 
 // containerWriter provides write access to the Container's underlying data
@@ -266,7 +269,7 @@ type containerStore interface {
 	// Retrieves all values for the provided group and type.
 	//
 	// The order in which the values are returned is undefined.
-	getValueGroup(name string, t reflect.Type) []reflect.Value
+	getValueGroup(name string, t reflect.Type) ([]reflect.Value, bool)
 
 	// Returns the providers that can produce a value with the given name and
 	// type.
@@ -275,6 +278,9 @@ type containerStore interface {
 	// Returns the providers that can produce values for the given group and
 	// type.
 	getGroupProviders(name string, t reflect.Type) []provider
+
+	// Returns the decorator list of a particular node
+	getDecorators(k key) []*node
 
 	createGraph() *dot.Graph
 }
@@ -306,10 +312,11 @@ type provider interface {
 // New constructs a Container.
 func New(opts ...Option) *Container {
 	c := &Container{
-		providers: make(map[key][]*node),
-		values:    make(map[key]reflect.Value),
-		groups:    make(map[key][]reflect.Value),
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		providers:  make(map[key][]*node),
+		values:     make(map[key]reflect.Value),
+		groups:     make(map[key][]reflect.Value),
+		decorators: make(map[key][]*node),
+		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	for _, opt := range opts {
@@ -367,13 +374,17 @@ func (c *Container) getValue(name string, t reflect.Type) (v reflect.Value, ok b
 }
 
 func (c *Container) setValue(name string, t reflect.Type, v reflect.Value) {
-	c.values[key{name: name, t: t}] = v
+	k := key{t: t, name: name}
+	c.values[k] = v
 }
 
-func (c *Container) getValueGroup(name string, t reflect.Type) []reflect.Value {
-	items := c.groups[key{group: name, t: t}]
+func (c *Container) getValueGroup(name string, t reflect.Type) ([]reflect.Value, bool) {
+	items, ok := c.groups[key{group: name, t: t}]
+	if !ok {
+		return []reflect.Value{}, ok
+	}
 	// shuffle the list so users don't rely on the ordering of grouped values
-	return shuffledCopy(c.rand, items)
+	return shuffledCopy(c.rand, items), true
 }
 
 func (c *Container) submitGroupedValue(name string, t reflect.Type, v reflect.Value) {
@@ -408,6 +419,33 @@ func (c *Container) getProviders(k key) []provider {
 		providers[i] = n
 	}
 	return providers
+}
+
+func (c *Container) getDecorators(k key) []*node {
+	p := c
+	if _, ok := c.providers[k]; !ok {
+		cont := c.children
+		for len(cont) > 0 {
+			v := cont[0]
+			cont = cont[1:]
+			if _, ok := v.providers[k]; !ok {
+				cont = append(cont, v.children...)
+			} else {
+				p = v
+				break
+			}
+		}
+	} else {
+		p = c
+	}
+	decorators := make([]*node, 0)
+	for p != nil {
+		if _, ok := p.decorators[k]; ok {
+			decorators = append(decorators, p.decorators[k]...)
+		}
+		p = p.parent
+	}
+	return decorators
 }
 
 func (c *Container) getRoot() *Container {
@@ -516,6 +554,32 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 	return nil
 }
 
+func (c *Container) Decorate(decorator interface{}, opts ...ProvideOption) error {
+	dtype := reflect.TypeOf(decorator)
+	if dtype == nil {
+		return errors.New("can't decorate with an untyped nil")
+	}
+	if dtype.Kind() != reflect.Func {
+		return fmt.Errorf("can't call non-function %v (type %v)", decorator, dtype)
+	}
+
+	var options provideOptions
+	for _, o := range opts {
+		o.applyProvideOption(&options)
+	}
+	if err := options.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.decorate(decorator, options); err != nil {
+		return errConstructorFailed{
+			Func:   digreflect.InspectFunc(decorator),
+			Reason: err,
+		}
+	}
+	return nil
+}
+
 // Child returns a named child of this container. The child container has
 // full access to the parent's types, and any types provided to the child
 // will be made available to the parent.
@@ -524,12 +588,13 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 // does not have to be unique across different children of the container.
 func (c *Container) Child(name string) *Container {
 	child := &Container{
-		providers: make(map[key][]*node),
-		values:    make(map[key]reflect.Value),
-		groups:    make(map[key][]reflect.Value),
-		rand:      c.rand,
-		name:      name,
-		parent:    c,
+		providers:  make(map[key][]*node),
+		values:     make(map[key]reflect.Value),
+		groups:     make(map[key][]reflect.Value),
+		decorators: make(map[key][]*node),
+		rand:       c.rand,
+		name:       name,
+		parent:     c,
 	}
 
 	c.children = append(c.children, child)
@@ -614,6 +679,142 @@ func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 	return keys, nil
 }
 
+func (c *Container) decorate(dtor interface{}, opts provideOptions) error {
+	n, err := newNode(
+		dtor,
+		nodeOptions{
+			ResultName:  opts.Name,
+			ResultGroup: opts.Group,
+			ResultAs:    opts.As,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	dtype := reflect.TypeOf(dtor)
+
+	// Check if all the result types exist among the input types
+	inTypes := make(map[key]struct{})
+	for i := 0; i < dtype.NumIn(); i++ {
+		in := dtype.In(i)
+		if IsIn(in) {
+			for j := 0; j < in.NumField(); j++ {
+				t := in.Field(j).Type
+				//Exclude embedded In type
+				if IsIn(t) {
+					continue
+				}
+				name := in.Field(j).Tag.Get(_nameTag)
+				group := in.Field(j).Tag.Get(_groupTag)
+				if name != "" && group != "" {
+					return errors.New("cannot use name tags and group tags together")
+				}
+				if group != "" {
+					if _, ok := inTypes[key{t.Elem(), name, group}]; ok {
+						return fmt.Errorf("cannot provide %v multple times in decorator", t)
+					}
+					inTypes[key{t.Elem(), name, group}] = struct{}{}
+				} else {
+					if _, ok := inTypes[key{t, name, group}]; ok {
+						return fmt.Errorf("cannot provide %v multple times in decorator", t)
+					}
+					inTypes[key{t, name, group}] = struct{}{}
+				}
+			}
+		} else {
+			inTypes[key{t: in}] = struct{}{}
+		}
+	}
+	outTypes := make(map[key]struct{})
+	for i := 0; i < dtype.NumOut(); i++ {
+		out := dtype.Out(i)
+		if IsOut(out) {
+			for j := 0; j < out.NumField(); j++ {
+				t := out.Field(j).Type
+				//Exclude embedded Out type
+				if IsOut(t) {
+					continue
+				}
+				name := out.Field(j).Tag.Get(_nameTag)
+				group := out.Field(j).Tag.Get(_groupTag)
+				if name != "" && group != "" {
+					return errors.New("cannot use name tags and group tags together")
+				}
+				if _, ok := outTypes[key{t, name, group}]; ok {
+					return fmt.Errorf("cannot provide %v multple times in decorator", t)
+				}
+				outTypes[key{t, name, group}] = struct{}{}
+			}
+		} else {
+			outTypes[key{t: out}] = struct{}{}
+		}
+	}
+
+	for k := range outTypes {
+		if _, ok := inTypes[k]; !ok {
+			return errors.New("the result types, with the exception of error, must be present among the input parameters")
+		}
+		delete(inTypes, k)
+	}
+
+	params := []param{}
+	for k := range inTypes {
+		if k.group != "" {
+			params = append(params, paramGroupedSlice{k.group, reflect.SliceOf(k.t)})
+		} else {
+			params = append(params, paramSingle{
+				Name: k.name,
+				Type: k.t,
+			})
+		}
+	}
+
+	for k := range outTypes {
+		found := false
+		// Checking for the decorator output's existence in the sub graph with the
+		// current container as root.
+		if _, ok := c.providers[k]; !ok {
+			var cont []*Container
+			cont = append(cont, c.children...)
+			for !found && !(len(cont) == 0) {
+				v := cont[0]
+				cont = cont[1:]
+				if _, ok := v.providers[k]; !ok {
+					cont = append(cont, v.children...)
+				} else {
+					found = true
+				}
+			}
+		} else {
+			found = true
+		}
+		if !found {
+			return errors.New("decorator must be declared in the scope of the node's container or its ancestors')")
+		}
+
+		if len(params) > 0 {
+			c.isVerifiedAcyclic = false
+			oldParams := n.paramList.Params
+			oldProviders := c.providers[k]
+			for _, p := range c.providers[k] {
+				params = append(params, p.paramList.Params...)
+			}
+			n.paramList.Params = params
+			c.providers[k] = append([]*node{n}, c.providers[k]...)
+			if err := verifyAcyclic(c.getRoot(), n, k); err != nil {
+				c.providers[k] = oldProviders
+				return err
+			}
+			c.providers[k] = oldProviders
+			n.paramList.Params = oldParams
+			c.isVerifiedAcyclic = true
+		}
+		c.decorators[k] = append(c.decorators[k], n)
+	}
+	return nil
+}
+
 // Visits the results of a node and compiles a collection of all the keys
 // produced by that node.
 type connectionVisitor struct {
@@ -674,6 +875,7 @@ func (cv connectionVisitor) Visit(res result) resultVisitor {
 			*cv.err = err
 			return nil
 		}
+
 		cv.keyPaths[k] = path
 		for _, asType := range r.As {
 			k := key{name: r.Name, t: asType}
@@ -792,14 +994,12 @@ func (n *node) Call(c containerStore) error {
 	if n.called {
 		return nil
 	}
-
 	if err := shallowCheckDependencies(c, n.paramList); err != nil {
 		return errMissingDependencies{
 			Func:   n.location,
 			Reason: err,
 		}
 	}
-
 	args, err := n.paramList.BuildList(c)
 	if err != nil {
 		return errArgumentsFailed{
@@ -807,7 +1007,9 @@ func (n *node) Call(c containerStore) error {
 			Reason: err,
 		}
 	}
-
+	if n.called {
+		return nil
+	}
 	receiver := newStagingContainerWriter()
 	results := reflect.ValueOf(n.ctor).Call(args)
 	if err := n.resultList.ExtractList(receiver, results); err != nil {
@@ -863,8 +1065,9 @@ func shallowCheckDependencies(c containerStore, p param) error {
 // stagingContainerWriter is a containerWriter that records the changes that
 // would be made to a containerWriter and defers them until Commit is called.
 type stagingContainerWriter struct {
-	values map[key]reflect.Value
-	groups map[key][]reflect.Value
+	values      map[key]reflect.Value
+	groups      map[key][]reflect.Value
+	isDecorated map[key]bool
 }
 
 var _ containerWriter = (*stagingContainerWriter)(nil)
